@@ -1,3 +1,6 @@
 [submodule "tests/data"]
 	path = tests/data
 	url = https://github.com/librosa/librosa-test-data.git
+[submodule "librosa_cpp/thirdparty/eigen"]
+	path = librosa_cpp/thirdparty/eigen
+	url = https://gitlab.com/libeigen/eigen.git
