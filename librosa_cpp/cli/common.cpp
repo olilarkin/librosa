@@ -13,8 +13,10 @@ librosa::AudioData load_audio(const CommonOptions& opts) {
     }
 
     std::optional<librosa::Real> dur_opt;
-    if (opts.duration > 0) {
+    if (opts.duration >= 0) {
         dur_opt = opts.duration;
+    } else if (opts.duration != -1.0) {
+        throw librosa::ParameterError("duration must be non-negative or -1");
     }
 
     return librosa::load(opts.input_file, sr_opt, opts.mono, opts.offset, dur_opt);

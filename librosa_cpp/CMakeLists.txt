@@ -118,6 +118,7 @@ if(LIBROSA_BUILD_TESTS)
         tests/test_util.cpp
         tests/test_convert.cpp
         tests/test_audio.cpp
+        tests/test_cli.cpp
         tests/test_spectrum.cpp
         tests/test_pitch.cpp
         tests/test_constantq.cpp
@@ -132,6 +133,8 @@ if(LIBROSA_BUILD_TESTS)
         tests/test_segment.cpp
         tests/test_notation.cpp
         tests/test_intervals.cpp
+        cli/common.cpp
+        cli/formatter.cpp
     )
 
     target_link_libraries(librosa_tests
@@ -139,6 +142,11 @@ if(LIBROSA_BUILD_TESTS)
             librosa::librosa
             GTest::gtest
             GTest::gtest_main
+    )
+
+    target_include_directories(librosa_tests
+        PRIVATE
+            ${SNDFILE_INCLUDE_DIRS}
     )
 
     include(GoogleTest)

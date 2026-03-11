@@ -45,6 +45,8 @@ private:
                      const std::vector<std::pair<std::string, std::string>>& params = {});
     void json_footer(std::ostream& os);
     std::string fmt(double v) const;
+    std::string json_number(double v) const;
+    std::string json_string(const std::string& value) const;
 };
 
 } // namespace cli

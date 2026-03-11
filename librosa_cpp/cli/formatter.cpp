@@ -5,6 +5,54 @@
 
 namespace cli {
 
+namespace {
+
+std::string escape_json(const std::string& value) {
+    std::ostringstream oss;
+
+    for (unsigned char c : value) {
+        switch (c) {
+        case '\\': oss << "\\\\"; break;
+        case '"': oss << "\\\""; break;
+        case '\b': oss << "\\b"; break;
+        case '\f': oss << "\\f"; break;
+        case '\n': oss << "\\n"; break;
+        case '\r': oss << "\\r"; break;
+        case '\t': oss << "\\t"; break;
+        default:
+            if (c < 0x20) {
+                oss << "\\u"
+                    << std::hex << std::setw(4) << std::setfill('0')
+                    << static_cast<int>(c)
+                    << std::dec << std::setfill(' ');
+            } else {
+                oss << static_cast<char>(c);
+            }
+            break;
+        }
+    }
+
+    return oss.str();
+}
+
+bool is_json_number_string(const std::string& value) {
+    if (value.empty()) {
+        return false;
+    }
+
+    size_t pos = 0;
+    double parsed = 0.0;
+    try {
+        parsed = std::stod(value, &pos);
+    } catch (...) {
+        return false;
+    }
+
+    return pos == value.size() && std::isfinite(parsed);
+}
+
+} // namespace
+
 OutputFormatter::OutputFormatter(const std::string& format, int precision, bool no_time,
                                  const std::string& command, const std::string& file)
     : format_(format), precision_(precision), no_time_(no_time),
@@ -18,13 +66,22 @@ std::string OutputFormatter::fmt(double v) const {
     return oss.str();
 }
 
+std::string OutputFormatter::json_number(double v) const {
+    if (std::isnan(v) || std::isinf(v)) return "null";
+    return fmt(v);
+}
+
+std::string OutputFormatter::json_string(const std::string& value) const {
+    return "\"" + escape_json(value) + "\"";
+}
+
 void OutputFormatter::scalar(const std::string& label, double value) {
     auto& os = std::cout;
     if (format_ == "json") {
         os << "{\n";
-        os << "  \"file\": \"" << file_ << "\",\n";
-        os << "  \"command\": \"" << command_ << "\",\n";
-        os << "  \"" << label << "\": " << fmt(value) << "\n";
+        os << "  \"file\": " << json_string(file_) << ",\n";
+        os << "  \"command\": " << json_string(command_) << ",\n";
+        os << "  " << json_string(label) << ": " << json_number(value) << "\n";
         os << "}\n";
     } else if (format_ == "csv") {
         os << label << "\n";
@@ -38,18 +95,12 @@ void OutputFormatter::key_value(const std::vector<std::pair<std::string, std::st
     auto& os = std::cout;
     if (format_ == "json") {
         os << "{\n";
-        os << "  \"file\": \"" << file_ << "\",\n";
-        os << "  \"command\": \"" << command_ << "\"";
+        os << "  \"file\": " << json_string(file_) << ",\n";
+        os << "  \"command\": " << json_string(command_);
         for (auto& [k, v] : pairs) {
-            os << ",\n  \"" << k << "\": ";
-            // Try to detect if it's a number
-            bool is_num = false;
-            try {
-                std::stod(v);
-                is_num = true;
-            } catch (...) {}
-            if (is_num) os << v;
-            else os << "\"" << v << "\"";
+            os << ",\n  " << json_string(k) << ": ";
+            if (is_json_number_string(v)) os << v;
+            else os << json_string(v);
         }
         os << "\n}\n";
     } else if (format_ == "csv") {
@@ -74,13 +125,13 @@ void OutputFormatter::vector(const librosa::ArrayXr& data, const std::string& la
     auto& os = std::cout;
     if (format_ == "json") {
         os << "{\n";
-        os << "  \"file\": \"" << file_ << "\",\n";
-        os << "  \"command\": \"" << command_ << "\",\n";
+        os << "  \"file\": " << json_string(file_) << ",\n";
+        os << "  \"command\": " << json_string(command_) << ",\n";
         os << "  \"count\": " << data.size() << ",\n";
-        os << "  \"" << label << "\": [";
+        os << "  " << json_string(label) << ": [";
         for (Eigen::Index i = 0; i < data.size(); ++i) {
             if (i > 0) os << ", ";
-            os << fmt(data(i));
+            os << json_number(data(i));
         }
         os << "]\n}\n";
     } else if (format_ == "csv") {
@@ -104,14 +155,14 @@ void OutputFormatter::per_frame(const librosa::ArrayXr& times, const librosa::Ar
 
     if (format_ == "json") {
         os << "{\n";
-        os << "  \"file\": \"" << file_ << "\",\n";
-        os << "  \"command\": \"" << command_ << "\",\n";
+        os << "  \"file\": " << json_string(file_) << ",\n";
+        os << "  \"command\": " << json_string(command_) << ",\n";
         os << "  \"shape\": [" << n_frames << ", " << n_feat << "],\n";
         if (!no_time_) {
             os << "  \"times\": [";
             for (Eigen::Index t = 0; t < n_frames; ++t) {
                 if (t > 0) os << ", ";
-                os << fmt(times(t));
+                os << json_number(times(t));
             }
             os << "],\n";
         }
@@ -120,7 +171,7 @@ void OutputFormatter::per_frame(const librosa::ArrayXr& times, const librosa::Ar
             os << "    [";
             for (Eigen::Index f = 0; f < n_feat; ++f) {
                 if (f > 0) os << ", ";
-                os << fmt(data(f, t));
+                os << json_number(data(f, t));
             }
             os << "]";
             if (t < n_frames - 1) os << ",";
@@ -170,28 +221,27 @@ void OutputFormatter::pitch_output(const librosa::ArrayXr& times, const librosa:
 
     if (format_ == "json") {
         os << "{\n";
-        os << "  \"file\": \"" << file_ << "\",\n";
-        os << "  \"command\": \"" << command_ << "\",\n";
+        os << "  \"file\": " << json_string(file_) << ",\n";
+        os << "  \"command\": " << json_string(command_) << ",\n";
         os << "  \"count\": " << n << ",\n";
         if (!no_time_) {
             os << "  \"times\": [";
             for (Eigen::Index i = 0; i < n; ++i) {
                 if (i > 0) os << ", ";
-                os << fmt(times(i));
+                os << json_number(times(i));
             }
             os << "],\n";
         }
         os << "  \"f0\": [";
         for (Eigen::Index i = 0; i < n; ++i) {
             if (i > 0) os << ", ";
-            if (std::isnan(f0(i))) os << "null";
-            else os << fmt(f0(i));
+            os << json_number(f0(i));
         }
         os << "],\n";
         os << "  \"voiced_probability\": [";
         for (Eigen::Index i = 0; i < n; ++i) {
             if (i > 0) os << ", ";
-            os << fmt(voiced_prob(i));
+            os << json_number(voiced_prob(i));
         }
         os << "]\n}\n";
     } else if (format_ == "csv") {

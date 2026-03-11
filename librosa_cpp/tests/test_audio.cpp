@@ -1,8 +1,13 @@
 #include <gtest/gtest.h>
 #include <librosa/core/audio.hpp>
 #include <librosa/util/exceptions.hpp>
+#include <sndfile.h>
 #include <cmath>
+#include <filesystem>
 #include <random>
+#include <stdexcept>
+#include <string>
+#include <unistd.h>
 
 using namespace librosa;
 
@@ -19,6 +24,58 @@ ArrayXr random_array(Eigen::Index size) {
     }
     return result;
 }
+
+class TempAudioFile {
+public:
+    TempAudioFile(int sample_rate, int channels, sf_count_t frames) {
+        char path_template[] = "/tmp/librosa-audio-XXXXXX.wav";
+        int fd = mkstemps(path_template, 4);
+        if (fd == -1) {
+            throw std::runtime_error("Failed to create temporary audio path");
+        }
+
+        ::close(fd);
+        path_ = path_template;
+
+        SF_INFO sfinfo;
+        sfinfo.frames = frames;
+        sfinfo.samplerate = sample_rate;
+        sfinfo.channels = channels;
+        sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
+        sfinfo.sections = 0;
+        sfinfo.seekable = 0;
+
+        SNDFILE* sndfile = sf_open(path_.c_str(), SFM_WRITE, &sfinfo);
+        if (!sndfile) {
+            throw std::runtime_error("Failed to open temporary audio file for writing");
+        }
+
+        std::vector<double> buffer(frames * channels);
+        for (sf_count_t frame = 0; frame < frames; ++frame) {
+            for (int channel = 0; channel < channels; ++channel) {
+                buffer[frame * channels + channel] =
+                    static_cast<double>(channel + 1) * (static_cast<double>(frame + 1) / frames);
+            }
+        }
+
+        sf_count_t written = sf_writef_double(sndfile, buffer.data(), frames);
+        sf_close(sndfile);
+
+        if (written != frames) {
+            throw std::runtime_error("Failed to write temporary audio file");
+        }
+    }
+
+    ~TempAudioFile() {
+        std::error_code ec;
+        std::filesystem::remove(path_, ec);
+    }
+
+    const std::string& path() const { return path_; }
+
+private:
+    std::string path_;
+};
 
 } // anonymous namespace
 
@@ -393,11 +450,31 @@ TEST(AudioLoadTest, MissingFileThrows) {
 
 // Test audio parameter validation
 TEST(AudioLoadTest, InvalidOffset) {
-    // Negative offset should throw
-    EXPECT_THROW(load("/any/path.wav", 22050, true, -1.0), ParameterError);
+    TempAudioFile file(22050, 1, 128);
+    EXPECT_THROW(load(file.path(), 22050, true, -1.0), ParameterError);
 }
 
 TEST(AudioLoadTest, InvalidDuration) {
-    // Negative duration should throw
-    EXPECT_THROW(load("/any/path.wav", 22050, true, 0.0, -1.0), ParameterError);
+    TempAudioFile file(22050, 1, 128);
+    EXPECT_THROW(load(file.path(), 22050, true, 0.0, -1.0), ParameterError);
+}
+
+TEST(AudioLoadTest, OffsetPastEndThrows) {
+    TempAudioFile file(1000, 1, 100);
+    EXPECT_THROW(load(file.path(), std::nullopt, true, 0.101), ParameterError);
+}
+
+TEST(AudioInfoTest, ReportsNativeMetadata) {
+    TempAudioFile file(48000, 2, 9600);
+
+    AudioFileInfo info = get_audio_info(file.path());
+
+    EXPECT_EQ(info.samples, 9600);
+    EXPECT_EQ(info.channels, 2);
+    EXPECT_EQ(info.sample_rate, 48000);
+    EXPECT_NEAR(info.duration, 0.2, 1e-12);
+
+    AudioData transformed = load(file.path(), 22050, true);
+    EXPECT_EQ(transformed.num_channels(), 1);
+    EXPECT_NE(transformed.num_samples(), info.samples);
 }

@@ -10,6 +10,13 @@ namespace librosa {
 // Audio I/O
 // ============================================================================
 
+struct AudioFileInfo {
+    Eigen::Index samples;
+    Real sample_rate;
+    int channels;
+    Real duration;
+};
+
 /// Load an audio file as floating point time series
 /// @param path Path to audio file
 /// @param sr Target sample rate (std::nullopt for native)
@@ -27,6 +34,11 @@ AudioData load(const std::string& path,
 /// @param path Path to audio file
 /// @return Duration in seconds
 Real get_duration(const std::string& path);
+
+/// Get audio file metadata without loading or transforming samples
+/// @param path Path to audio file
+/// @return Native file metadata
+AudioFileInfo get_audio_info(const std::string& path);
 
 /// Get duration from audio buffer
 /// @param y Audio samples

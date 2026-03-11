@@ -14,6 +14,26 @@
 namespace librosa {
 
 namespace {
+    AudioFileInfo read_audio_info(const std::string& path) {
+        SF_INFO sfinfo;
+        sfinfo.format = 0;
+
+        SNDFILE* sndfile = sf_open(path.c_str(), SFM_READ, &sfinfo);
+        if (!sndfile) {
+            throw ParameterError("Failed to open audio file: " + path + " - " + sf_strerror(nullptr));
+        }
+
+        AudioFileInfo info{
+            static_cast<Eigen::Index>(sfinfo.frames),
+            static_cast<Real>(sfinfo.samplerate),
+            sfinfo.channels,
+            static_cast<Real>(sfinfo.frames) / sfinfo.samplerate
+        };
+
+        sf_close(sndfile);
+        return info;
+    }
+
     // Helper to compute next power of 2
     int next_power_of_2(int n) {
         int p = 1;
@@ -38,6 +58,14 @@ AudioData load(const std::string& path,
                bool mono,
                Real offset,
                std::optional<Real> duration) {
+    if (offset < 0) {
+        throw ParameterError("offset must be non-negative");
+    }
+
+    if (duration && *duration < 0) {
+        throw ParameterError("duration must be non-negative");
+    }
+
     SF_INFO sfinfo;
     sfinfo.format = 0;
 
@@ -48,6 +76,11 @@ AudioData load(const std::string& path,
 
     // Calculate start frame and frame count
     sf_count_t start_frame = static_cast<sf_count_t>(offset * sfinfo.samplerate);
+    if (start_frame > sfinfo.frames) {
+        sf_close(sndfile);
+        throw ParameterError("offset exceeds audio duration for: " + path);
+    }
+
     sf_count_t frame_count = sfinfo.frames - start_frame;
 
     if (duration) {
@@ -58,6 +91,19 @@ AudioData load(const std::string& path,
     // Seek to start position
     if (start_frame > 0) {
         sf_seek(sndfile, start_frame, SEEK_SET);
+    }
+
+    AudioData result;
+    result.sample_rate = static_cast<Real>(sfinfo.samplerate);
+    result.channels = mono && sfinfo.channels > 1 ? 1 : sfinfo.channels;
+
+    if (frame_count == 0) {
+        result.samples.resize(result.channels, 0);
+        sf_close(sndfile);
+        if (sr && *sr != result.sample_rate) {
+            result.sample_rate = *sr;
+        }
+        return result;
     }
 
     // Read audio data
@@ -78,8 +124,6 @@ AudioData load(const std::string& path,
         }
     }
 
-    AudioData result;
-    result.sample_rate = static_cast<Real>(sfinfo.samplerate);
     result.channels = sfinfo.channels;
 
     // Convert to mono if requested
@@ -116,18 +160,11 @@ AudioData load(const std::string& path,
 }
 
 Real get_duration(const std::string& path) {
-    SF_INFO sfinfo;
-    sfinfo.format = 0;
+    return get_audio_info(path).duration;
+}
 
-    SNDFILE* sndfile = sf_open(path.c_str(), SFM_READ, &sfinfo);
-    if (!sndfile) {
-        throw ParameterError("Failed to open audio file: " + path);
-    }
-
-    Real duration = static_cast<Real>(sfinfo.frames) / sfinfo.samplerate;
-    sf_close(sndfile);
-
-    return duration;
+AudioFileInfo get_audio_info(const std::string& path) {
+    return read_audio_info(path);
 }
 
 Real get_duration(const ArrayXr& y, Real sr) {
@@ -148,18 +185,7 @@ Real get_duration(const ArrayXXr& S, Real sr, int hop_length, int n_fft, bool ce
 }
 
 Real get_samplerate(const std::string& path) {
-    SF_INFO sfinfo;
-    sfinfo.format = 0;
-
-    SNDFILE* sndfile = sf_open(path.c_str(), SFM_READ, &sfinfo);
-    if (!sndfile) {
-        throw ParameterError("Failed to open audio file: " + path);
-    }
-
-    Real sr = static_cast<Real>(sfinfo.samplerate);
-    sf_close(sndfile);
-
-    return sr;
+    return get_audio_info(path).sample_rate;
 }
 
 // ============================================================================

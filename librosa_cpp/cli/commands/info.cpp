@@ -2,6 +2,7 @@
 #include "../formatter.hpp"
 #include <CLI/CLI.hpp>
 #include <librosa/core/audio.hpp>
+#include <iomanip>
 #include <sstream>
 
 namespace cli {
@@ -11,18 +12,13 @@ void register_info(CLI::App& app, CommonOptions& opts) {
     sub->callback([&]() {
         OutputFormatter out(opts.format, opts.precision, opts.no_time, "info", opts.input_file);
 
-        auto sr_native = librosa::get_samplerate(opts.input_file);
-        auto duration = librosa::get_duration(opts.input_file);
-
-        auto audio = load_audio(opts);
-        auto n_samples = audio.num_samples();
-        auto n_channels = audio.num_channels();
+        auto info = librosa::get_audio_info(opts.input_file);
 
         std::ostringstream sr_ss, dur_ss, samp_ss, ch_ss;
-        sr_ss << sr_native;
-        dur_ss << std::fixed << std::setprecision(opts.precision) << duration;
-        samp_ss << n_samples;
-        ch_ss << n_channels;
+        sr_ss << info.sample_rate;
+        dur_ss << std::fixed << std::setprecision(opts.precision) << info.duration;
+        samp_ss << info.samples;
+        ch_ss << info.channels;
 
         out.key_value({
             {"filename", opts.input_file},
