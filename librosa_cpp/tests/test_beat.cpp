@@ -192,6 +192,16 @@ TEST(BeatTrackTest, UnitsConversion) {
     }
 }
 
+TEST(BeatTrackTest, TimeUnitsRequireHelper) {
+    ArrayXr onset_envelope = ArrayXr::Zero(100);
+    onset_envelope(10) = 1.0;
+
+    EXPECT_THROW(
+        beat_track(onset_envelope, 22050, 512, 120.0, 100.0, true,
+                   std::nullopt, BeatUnits::Time),
+        ParameterError);
+}
+
 TEST(BeatTrackTest, NoTrimming) {
     int n_frames = 300;
     ArrayXr onset_envelope(n_frames);

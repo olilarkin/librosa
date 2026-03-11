@@ -4,6 +4,7 @@ project(librosa_cpp VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_EXPORT_NO_PACKAGE_REGISTRY ON)
 
 # Options
 option(LIBROSA_BUILD_TESTS "Build tests" ON)
@@ -12,7 +13,11 @@ option(LIBROSA_BUILD_CROSSVAL_TESTS "Build cross-validation tests against Python
 option(LIBROSA_BUILD_CLI "Build the librosa-cpp CLI tool" OFF)
 
 # Eigen3 from submodule
+set(EIGEN_BUILD_DOC OFF CACHE BOOL "Disable Eigen docs in librosa_cpp builds" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "Disable third-party tests in librosa_cpp builds" FORCE)
 add_subdirectory(thirdparty/eigen EXCLUDE_FROM_ALL)
+unset(BUILD_TESTING CACHE)
+unset(BUILD_TESTING)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SNDFILE REQUIRED sndfile)
 pkg_check_modules(FFTW3 REQUIRED fftw3)
@@ -165,6 +170,11 @@ endif()
 
 # Examples
 if(LIBROSA_BUILD_EXAMPLES)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/load_audio.cpp")
+        message(FATAL_ERROR
+            "LIBROSA_BUILD_EXAMPLES=ON but the examples/ sources are not present in this checkout.")
+    endif()
+
     add_executable(example_load_audio examples/load_audio.cpp)
     target_link_libraries(example_load_audio PRIVATE librosa::librosa)
 

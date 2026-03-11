@@ -268,7 +268,7 @@ TEST(PeakPickTest, BasicPeakPick) {
     // Check each peak is a local maximum
     for (auto peak : peaks) {
         int s = std::max(0, static_cast<int>(peak) - 1);
-        int e = std::min(static_cast<int>(x.size()), static_cast<int>(peak) + 2);
+        int e = std::min(static_cast<int>(x.size()), static_cast<int>(peak) + 1);
         Real maxVal = x.segment(s, e - s).maxCoeff();
         EXPECT_GE(x(peak), maxVal - 1e-10);
     }

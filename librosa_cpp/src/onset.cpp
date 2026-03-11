@@ -421,6 +421,11 @@ std::vector<Eigen::Index> onset_detect_envelope(
         return {};
     }
 
+    // Match Python librosa: empty or all-zero envelopes produce no detections.
+    if (env.abs().maxCoeff() <= util::tiny<Real>()) {
+        return {};
+    }
+
     // Set default parameters based on sample rate and hop length
     // These are the optimized values from librosa
     if (pre_max == 0) {
@@ -454,11 +459,9 @@ std::vector<Eigen::Index> onset_detect_envelope(
             onset = frames_to_samples(onset, hop_length);
         }
     } else if (units == OnsetUnits::Time) {
-        // For time, we still return indices but they represent time
-        // The user should convert using frames_to_time
-        for (auto& onset : onsets) {
-            onset = frames_to_samples(onset, hop_length);
-        }
+        throw ParameterError(
+            "OnsetUnits::Time is not supported by onset_detect/onset_detect_envelope; "
+            "use onset_detect_times for real-valued times.");
     }
 
     return onsets;

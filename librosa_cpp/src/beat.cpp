@@ -500,9 +500,9 @@ std::pair<Real, std::vector<Eigen::Index>> beat_track(
             b = frames_to_samples(b, hop_length);
         }
     } else if (units == BeatUnits::Time) {
-        for (auto& b : beat_frames) {
-            b = frames_to_samples(b, hop_length);
-        }
+        throw ParameterError(
+            "BeatUnits::Time is not supported by beat_track/beat_track_audio; "
+            "use beat_track_times for real-valued times.");
     }
 
     return {bpm_val, beat_frames};

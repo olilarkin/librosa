@@ -449,8 +449,8 @@ std::vector<Eigen::Index> peak_pick(const ArrayXr& x,
     Eigen::Index n = x.size();
 
     // Special case first frame
-    Real max_val = x.head(std::min(static_cast<Eigen::Index>(post_max + 1), n)).maxCoeff();
-    Real mean_val = x.head(std::min(static_cast<Eigen::Index>(post_avg + 1), n)).mean();
+    Real max_val = x.head(std::min(static_cast<Eigen::Index>(post_max), n)).maxCoeff();
+    Real mean_val = x.head(std::min(static_cast<Eigen::Index>(post_avg), n)).mean();
 
     Eigen::Index i = 0;
     if (x(0) >= max_val && x(0) >= mean_val + delta) {
@@ -462,7 +462,7 @@ std::vector<Eigen::Index> peak_pick(const ArrayXr& x,
 
     while (i < n) {
         Eigen::Index start_max = std::max(Eigen::Index(0), i - pre_max);
-        Eigen::Index end_max = std::min(n, i + post_max + 1);
+        Eigen::Index end_max = std::min(n, i + post_max);
         max_val = x.segment(start_max, end_max - start_max).maxCoeff();
 
         if (x(i) != max_val) {
@@ -471,7 +471,7 @@ std::vector<Eigen::Index> peak_pick(const ArrayXr& x,
         }
 
         Eigen::Index start_avg = std::max(Eigen::Index(0), i - pre_avg);
-        Eigen::Index end_avg = std::min(n, i + post_avg + 1);
+        Eigen::Index end_avg = std::min(n, i + post_avg);
         mean_val = x.segment(start_avg, end_avg - start_avg).mean();
 
         if (x(i) >= mean_val + delta) {

@@ -1,0 +1,56 @@
+name: C++ CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cpp-ci.yml"
+      - "librosa_cpp/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cpp-ci.yml"
+      - "librosa_cpp/**"
+
+jobs:
+  build-and-test:
+    name: "Ubuntu ${{ matrix.label }}"
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: "without soxr"
+            install_soxr: false
+          - label: "with soxr"
+            install_soxr: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install base dependencies
+        run: |
+          sudo apt-get update -yy
+          sudo apt-get install -yy cmake ninja-build pkg-config libsndfile1-dev libfftw3-dev
+
+      - name: Install soxr
+        if: matrix.install_soxr
+        run: sudo apt-get install -yy libsoxr-dev
+
+      - name: Configure
+        run: >
+          cmake -S librosa_cpp -B build/librosa_cpp -G Ninja
+          -DLIBROSA_BUILD_TESTS=ON
+          -DLIBROSA_BUILD_CROSSVAL_TESTS=OFF
+          -DLIBROSA_BUILD_CLI=OFF
+
+      - name: Build
+        run: cmake --build build/librosa_cpp
+
+      - name: Test
+        run: ctest --test-dir build/librosa_cpp --output-on-failure -j2

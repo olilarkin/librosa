@@ -117,7 +117,7 @@ enum class OnsetUnits {
 /// @param sr Sample rate
 /// @param hop_length Hop length for onset envelope
 /// @param backtrack If true, backtrack onsets to nearest minimum
-/// @param units Output units (frames, samples, or time)
+/// @param units Output units. Use onset_detect_times for real-valued time output.
 /// @param normalize Normalize onset envelope before detection
 /// @param pre_max Samples before n for max computation (0 = use default)
 /// @param post_max Samples after n for max computation (0 = use default)

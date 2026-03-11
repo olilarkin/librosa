@@ -39,7 +39,7 @@ ArrayXr time_stretch(
 /// @param sr Sample rate
 /// @param n_steps Number of steps to shift (can be fractional)
 /// @param bins_per_octave Number of steps per octave
-/// @param res_type Resampling method
+/// @param res_type Resampling method ("fft", "linear", or "soxr_*" when available)
 /// @param n_fft FFT window size
 /// @param hop_length Samples between frames
 /// @return Pitch-shifted audio

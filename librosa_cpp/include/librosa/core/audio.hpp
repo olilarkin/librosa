@@ -63,7 +63,7 @@ ArrayXr to_mono(const ArrayXr& y);  // Pass-through for already mono
 /// @param y Input signal
 /// @param orig_sr Original sample rate
 /// @param target_sr Target sample rate
-/// @param res_type Resampling method ("fft" or "linear")
+/// @param res_type Resampling method ("fft", "linear", or "soxr_*" when available)
 /// @param fix Adjust length to match expected
 /// @param scale Scale for energy preservation
 /// @return Resampled signal

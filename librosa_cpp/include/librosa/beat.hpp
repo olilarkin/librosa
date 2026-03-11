@@ -104,7 +104,7 @@ enum class BeatUnits {
 /// @param tightness How closely to adhere to tempo estimate
 /// @param trim Trim leading/trailing weak beats
 /// @param bpm Optional fixed tempo (if not provided, estimate from signal)
-/// @param units Output units
+/// @param units Output units. Use beat_track_times for real-valued time output.
 /// @return Pair of (tempo, beat positions)
 std::pair<Real, std::vector<Eigen::Index>> beat_track(
     const ArrayXr& onset_envelope,

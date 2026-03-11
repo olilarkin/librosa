@@ -39,6 +39,15 @@ int num_two_factors(int x) {
     return count;
 }
 
+/// Pick the best available resampler for recursive CQT/VQT downsampling.
+const char* cqt_resample_type() {
+#ifdef LIBROSA_HAS_SOXR
+    return "soxr_hq";
+#else
+    return "fft";
+#endif
+}
+
 /// Compute the number of early downsampling operations
 int early_downsample_count(Real nyquist, Real filter_cutoff, int hop_length, int n_octaves) {
     int ds1 = std::max(0, static_cast<int>(std::ceil(std::log2(nyquist / filter_cutoff)) - 1) - 1);
@@ -64,7 +73,8 @@ std::tuple<ArrayXr, Real, int> early_downsample(
         }
 
         Real new_sr = sr / static_cast<Real>(ds_factor);
-        ArrayXr y_ds = resample(y, static_cast<Real>(ds_factor), 1.0, "soxr_hq", true, true);
+        ArrayXr y_ds = resample(y, static_cast<Real>(ds_factor), 1.0,
+                                cqt_resample_type(), true, true);
 
         if (!scale) {
             y_ds *= std::sqrt(static_cast<Real>(ds_factor));
@@ -345,7 +355,7 @@ ArrayXXc vqt(const ArrayXr& y, Real sr, int hop_length,
         if (my_hop % 2 == 0) {
             my_hop /= 2;
             my_sr /= 2.0;
-            my_y = resample(my_y, 2.0, 1.0, "soxr_hq", true, true);
+            my_y = resample(my_y, 2.0, 1.0, cqt_resample_type(), true, true);
         }
     }
 
@@ -554,7 +564,9 @@ ArrayXr icqt(const ArrayXXc& C, Real sr, int hop_length,
     // Apply tuning correction
     fmin *= std::pow(2.0, tuning / bins_per_octave);
 
-    int n_bins = static_cast<int>(C.rows());
+    ArrayXXc C_work = C;
+
+    int n_bins = static_cast<int>(C_work.rows());
     int n_octaves = static_cast<int>(std::ceil(static_cast<Real>(n_bins) / bins_per_octave));
 
     ArrayXr freqs = cqt_frequencies(n_bins, fmin, bins_per_octave);
@@ -568,6 +580,14 @@ ArrayXr icqt(const ArrayXXc& C, Real sr, int hop_length,
 
     auto [lengths, f_cutoff] = filters::wavelet_lengths(
         freqs, sr, window, filter_scale, std::optional<Real>(0.0), alpha);
+
+    if (length.has_value()) {
+        int n_frames = static_cast<int>(
+            std::ceil((length.value() + lengths.maxCoeff()) / static_cast<Real>(hop_length)));
+        if (C_work.cols() > n_frames) {
+            C_work = C_work.leftCols(n_frames);
+        }
+    }
 
     ArrayXr C_scale = lengths.sqrt();
 
@@ -611,51 +631,37 @@ ArrayXr icqt(const ArrayXXc& C, Real sr, int hop_length,
         MatrixXc dense_basis = filter_result.fft_basis;
         MatrixXc inv_basis = dense_basis.conjugate().transpose();
 
-        // Compute frequency-domain power: 1/sum(|inv_basis|^2, axis=0)
-        int n_freq = static_cast<int>(inv_basis.rows());
-        ArrayXr freq_power(n_freq);
-        for (int f = 0; f < n_freq; ++f) {
+        // Match librosa: normalize per filter/channel, not per FFT bin.
+        ArrayXr freq_power(n_filters);
+        for (int c = 0; c < n_filters; ++c) {
             Real power = 0.0;
-            for (int c = 0; c < static_cast<int>(inv_basis.cols()); ++c) {
-                power += std::norm(inv_basis(f, c));  // |z|^2
+            for (int f = 0; f < static_cast<int>(inv_basis.rows()); ++f) {
+                power += std::norm(inv_basis(f, c));
             }
-            freq_power(f) = (power > 0.0) ? 1.0 / power : 0.0;
+            freq_power(c) = (power > 0.0) ? 1.0 / power : 0.0;
         }
 
         // Compensate for length normalization in forward transform
         ArrayXr lengths_oct = lengths.segment(sl_start, n_filters);
-        ArrayXr scale_factors = ArrayXr::Constant(n_freq, static_cast<Real>(n_fft));
-        for (int f = 0; f < n_freq; ++f) {
-            freq_power(f) *= n_fft;
+        for (int c = 0; c < n_filters; ++c) {
+            freq_power(c) *= static_cast<Real>(n_fft) / lengths_oct(c);
         }
-        // Divide by lengths_oct via the einsum projection
         ArrayXr C_scale_oct = C_scale.segment(sl_start, n_filters);
 
-        // Compute D_oct = inv_basis * diag(C_scale * freq_power / lengths_oct) * C[sl, :]
-        // Actually: D_oct[f, t] = sum_c inv_basis[f,c] * scaling[c] * C[sl_start+c, t]
-        ArrayXXc C_oct = C.block(sl_start, 0, n_filters, C.cols());
+        // D_oct[f, t] = sum_c inv_basis[f,c] * scale[c] * C[sl_start+c, t]
+        ArrayXXc C_oct = C_work.block(sl_start, 0, n_filters, C_work.cols());
 
-        // Apply scaling to C_oct: scale each filter row
-        ArrayXXc C_scaled(n_filters, C.cols());
+        ArrayXXc C_scaled(n_filters, C_work.cols());
         for (int c = 0; c < n_filters; ++c) {
-            Real s;
+            Real s = freq_power(c);
             if (scale) {
-                s = C_scale_oct(c) / lengths_oct(c) * n_fft;
-            } else {
-                s = static_cast<Real>(n_fft) / lengths_oct(c);
+                s *= C_scale_oct(c);
             }
             C_scaled.row(c) = C_oct.row(c) * s;
         }
 
         // D_oct = inv_basis * C_scaled → (n_freq, n_frames)
         MatrixXc D_oct_mat = inv_basis * C_scaled.matrix();
-
-        // Apply freq_power
-        for (Eigen::Index t = 0; t < D_oct_mat.cols(); ++t) {
-            for (int f = 0; f < n_freq; ++f) {
-                D_oct_mat(f, t) *= freq_power(f);
-            }
-        }
 
         ArrayXXc D_oct = D_oct_mat.array();
 
@@ -666,7 +672,7 @@ ArrayXr icqt(const ArrayXXc& C, Real sr, int hop_length,
         // Resample to full rate if needed
         if (my_sr != sr) {
             Real ratio = sr / my_sr;
-            y_oct = resample(y_oct, 1.0, ratio, "fft", false, false);
+            y_oct = resample(y_oct, 1.0, ratio, cqt_resample_type(), false, false);
         }
 
         if (!y_initialized) {
